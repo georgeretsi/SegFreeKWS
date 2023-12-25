@@ -4,4 +4,8 @@ Description Coming soon! Code for the paper "Keyword Spotting Simplified: A Segm
 
 All critical functions for evaluation are available along with an already trained model in ./saved_models folder.
 
-Training code, along with documentation, will be uploaded soon.
+*Updates:*
+Training is also supported via train_words.py, e.g.:
+```
+python train_words.py -lr 1e-3 --dataset iam --max_epochs 40 --model_save_path './saved_models/temp.pt' 
+```
