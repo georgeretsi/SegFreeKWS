@@ -1,6 +1,7 @@
 import torch.nn as nn
 import torch.nn.functional as F
 import torch
+import numpy as np
 
 
 class BasicBlock(nn.Module):
@@ -69,40 +70,50 @@ class CNN(nn.Module):
         y = x
         if bbox is not None:
             bbox = bbox.to(x.device)
+            #'''
+            if np.random.uniform() < .5:
+                kr = np.random.randint(0, 5)
+                y = y *  (-F.max_pool2d(-bbox, 2 * kr + 1, 1, kr))
+                #y = y * bbox
+            #'''
 
         for nn_module in self.features:
             y = nn_module(y)
 
         s = 1
         if scale:
+            #s = F.sigmoid(self.scale(y.detach()))
             s = F.sigmoid(self.scale(y))
+            s = F.avg_pool2d(s, 3, 1, 1)
 
         if reduce:
             yc = self.temporal(y)
+            #yc = self.temporal(y.detach())
 
             if bbox is not None:
-                bbox_mask = (F.interpolate(bbox, size=[y.size(2), y.size(3)]) > .1).float() #.clamp(.1, 1)
+                bbox_mask = (F.interpolate(bbox, size=[y.size(2), y.size(3)]) > .1).float()
                 bbox_mask_aux = bbox_mask
                 if self.training:
-                     bbox_mask_aux *= torch.bernoulli(.95 * torch.ones_like(bbox_mask_aux))
+                    kr = np.random.randint(0, 4)
+                    bbox_mask_aux = bbox_mask * (-F.max_pool2d(-bbox_mask, (2 * kr + 1, 1), (1, 1), (kr, 0)))
+
+                    bbox_mask_aux *= torch.bernoulli(.75 * torch.ones_like(bbox_mask_aux))
 
                 bbox_mask_aux =  bbox_mask_aux.repeat(1, yc.size(1), 1, 1)
-                bbox_mask_max = -10. * yc.abs().mean() * (1 - bbox_mask_aux).detach()
+                bbox_mask_max = -100. * yc.abs().mean() * (1 - bbox_mask_aux).detach()
 
                 yctc = F.max_pool2d(yc + bbox_mask_max.detach(), [y.size(2), 1], stride=[y.size(2), 1], padding=[0, 0])
-                ycnt = (F.softmax(yc, 1) * s * bbox_mask.detach())[:, 1:].sum(2).sum(2)
 
-                char_mask = (F.softmax(yc, 1)[:, 0] > .5).float().detach()
-                eloss = .1 * torch.sum(char_mask * s) / torch.sum(char_mask)
+                bbox_mask_cnt = bbox_mask
+                ycnt = (F.softmax(yc, 1) * s * bbox_mask_cnt.detach())[:, 1:].sum(2).sum(2)
             else:
                 yctc = F.max_pool2d(yc, [y.size(2), 1], stride=[y.size(2), 1], padding=[0, 0])
                 ycnt = (F.softmax(yc, 1) * s)[:, 1:].sum(2).sum(2)
 
-                eloss = 0
 
             if self.training:
                 len_in = y.size(0) * [y.size(3)]
-                return ycnt, len_in, yctc.permute(2, 3, 0, 1)[0], eloss
+                return ycnt, len_in, yctc.permute(2, 3, 0, 1)[0]
             else:
                 return ycnt, yctc.permute(2, 3, 0, 1)[0]
         else:
